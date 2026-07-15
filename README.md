@@ -178,5 +178,5 @@ events, and signed images with SBOM attestations.
   They are not live credentials but they will trip every secret scanner you
   point at the repo — which is the exercise.
 - When you rotate and remove secrets during remediation, remember that deleting
-  a file in a later commit does **not** remove the secret from git history. See
-  §4.1 of the brief.
+  a file in a later commit does **not** remove the secret from git history.
+  
