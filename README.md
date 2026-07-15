@@ -160,7 +160,7 @@ are what fixes it.
 
 ## Success Criteria
 
-See Section 9 of the project brief. At the end of two weeks the expected
+the expected
 artefacts include a green 7-stage pipeline, zero committed secrets, zero
 CRITICAL CVEs in any service image, zero CRITICAL Checkov findings, zero OPA
 Gatekeeper violations, all application exploits in this README returning
