@@ -1,0 +1,17 @@
+title = "SecureFlow Gitleaks Configuration"
+
+# Extend the official Gitleaks rule set
+[extend]
+useDefault = true
+
+# Allowlist only verified false positives.
+# Do NOT exclude .env files, since this project intentionally
+# demonstrates secret detection and remediation.
+
+[allowlist]
+description = "Known false positives"
+
+paths = [
+    '''docs/''',
+    '''README\.md'''
+]
