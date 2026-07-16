@@ -1,0 +1,44 @@
+name: SBOM Generation
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    name: Generate SBOM (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth-service
+          - transaction-service
+          - frontend
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Image
+        run: |
+          docker build -t secureflow/${{ matrix.service }}:sbom \
+            services/${{ matrix.service }}
+
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: secureflow/${{ matrix.service }}:sbom
+          format: spdx-json
+          output-file: sbom-${{ matrix.service }}.spdx.json
+          artifact-name: sbom-${{ matrix.service }}.spdx.json
+          # This action uploads the generated SBOM as a workflow artifact
+          # automatically, no separate upload-artifact step is needed.
