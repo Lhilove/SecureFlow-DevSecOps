@@ -34,7 +34,7 @@ jobs:
             services/${{ matrix.service }}
 
       - name: Run Trivy (report, non-blocking)
-        uses: aquasecurity/trivy-action@ed142fdd35a6dfd458986ceeff3542eb28291d1e # v0.36.0 - pinned to commit per post-incident advisory
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: secureflow/${{ matrix.service }}:scan
           format: json
@@ -50,7 +50,7 @@ jobs:
           path: trivy-${{ matrix.service }}.json
 
       - name: Run Trivy (fail on Critical/High)
-        uses: aquasecurity/trivy-action@ed142fdd35a6dfd458986ceeff3542eb28291d1e # v0.36.0 - pinned to commit per post-incident advisory
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: secureflow/${{ matrix.service }}:scan
           format: table
