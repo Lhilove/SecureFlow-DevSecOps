@@ -1,0 +1,56 @@
+name: Dependency Scanning
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: Scan Python Dependencies (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth-service
+          - transaction-service
+          - frontend
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Run pip-audit
+        run: |
+          pip-audit \
+            -r services/${{ matrix.service }}/requirements.txt \
+            --format json \
+            --output pip-audit-${{ matrix.service }}.json \
+            || true
+
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-${{ matrix.service }}
+          path: pip-audit-${{ matrix.service }}.json
+
+      - name: Fail on Known Vulnerabilities
+        run: |
+          pip-audit -r services/${{ matrix.service }}/requirements.txt
