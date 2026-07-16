@@ -1,0 +1,58 @@
+name: Container Scanning
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  trivy:
+    name: Scan Image (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth-service
+          - transaction-service
+          - frontend
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Image
+        run: |
+          docker build -t secureflow/${{ matrix.service }}:scan \
+            services/${{ matrix.service }}
+
+      - name: Run Trivy (report, non-blocking)
+        uses: aquasecurity/trivy-action@ed142fdd35a6dfd458986ceeff3542eb28291d1e # v0.36.0 - pinned to commit per post-incident advisory
+        with:
+          image-ref: secureflow/${{ matrix.service }}:scan
+          format: json
+          output: trivy-${{ matrix.service }}.json
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: 0
+
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-${{ matrix.service }}
+          path: trivy-${{ matrix.service }}.json
+
+      - name: Run Trivy (fail on Critical/High)
+        uses: aquasecurity/trivy-action@ed142fdd35a6dfd458986ceeff3542eb28291d1e # v0.36.0 - pinned to commit per post-incident advisory
+        with:
+          image-ref: secureflow/${{ matrix.service }}:scan
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: 1
