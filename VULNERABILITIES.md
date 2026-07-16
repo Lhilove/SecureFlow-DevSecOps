@@ -57,6 +57,7 @@ every ID, followed by remediations that resolve them.
 | IV-08 | Overly permissive IAM                  | `infra/terraform/modules/iam/main.tf` — AdministratorAccess, wildcard actions |
 | IV-09 | Unencrypted S3 buckets                 | `infra/terraform/modules/s3/main.tf` — no SSE, public access blocks off |
 | IV-10 | EKS nodes in public subnets            | `infra/terraform/modules/eks/main.tf` + `modules/vpc/main.tf` — public subnets, public IPs, public API endpoint |
+| IV-11 | Flask debug mode enabled in production | All three services' `app.py` — `app.run(debug=True)` exposes the Werkzeug interactive debugger, allowing arbitrary code execution if reachable |
 
 ## Container and Kubernetes — Dockerfiles and `infra/kubernetes/base/`
 
@@ -84,10 +85,12 @@ misconfigured.
 | Tool             | Should detect |
 |------------------|---------------|
 | Gitleaks         | IV-03, IV-04 (all five committed secrets) |
-| SonarQube SAST   | AV-01, AV-02, AV-07, AV-08, TV-03, TV-04 |
+| SonarQube SAST   | AV-01, AV-02, AV-07, AV-08, TV-03, TV-04, TV-06 |
+| Bandit           | AV-05, IV-05 (bind-all), IV-11 |
 | Trivy (image)    | CK-01 |
 | Trivy (K8s)      | CK-04, CK-05, CK-06, CK-07, CK-09 |
 | Checkov          | IV-08, IV-09, IV-10 |
 | OPA Gatekeeper   | CK-04, CK-05, CK-06, CK-07 (at admission) |
 | Falco            | runtime behaviour following any successful exploit of AV-*, TV-*, FV-* |
 | OWASP ZAP (DAST) | AV-01 at HTTP level, FV-01, FV-02, FV-06, FV-07 |
+
