@@ -1,7 +1,7 @@
 # CI/CD — Image Signing
 
 ## Purpose
-Scanning (issues #2–#6) answers "does this image have known problems?"
+Scanning answers "does this image have known problems?"
 Signing answers a different question: "did this exact image really
 come from our pipeline, unmodified?" Without signing, anyone who can
 push to a registry, or intercept/replace an image in transit, or
@@ -27,8 +27,6 @@ signing modes:
   uses this mode.
 
 ## How Keyless Signing Actually Works
-This is the part that seems like magic the first time, so worth
-walking through step by step:
 
 1. The GitHub Actions workflow requests an OIDC token from GitHub,
    proving "I am this exact workflow, in this exact repo, at this
