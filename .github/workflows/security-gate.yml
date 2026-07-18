@@ -20,71 +20,12 @@ jobs:
     name: Aggregate Scan Results
     runs-on: ubuntu-latest
     steps:
-      - name: Evaluate Security Gate
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Security Gate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -e
-
-          # Blocking workflows: a failure here fails the gate (treated as CRITICAL).
-          BLOCKING_WORKFLOWS=(
-            "Secret Scanning (Gitleaks)"
-            "Static Analysis (SAST)"
-            "Container Scanning"
-            "IaC Scanning"
-          )
-
-          # Warn-only workflows: a failure here is reported but does not fail the gate.
-          WARN_WORKFLOWS=(
-            "DAST (OWASP ZAP)"
-          )
-
-          gate_failed=0
-          echo "## Security Gate Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Evaluating commit: \`$SHA\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Workflow | Type | Conclusion |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
-
-          check_workflow() {
-            local name="$1"
-            local kind="$2"
-
-            conclusion=$(gh api \
-              "repos/$REPO/actions/runs?head_sha=$SHA&per_page=50" \
-              --jq ".workflow_runs[] | select(.name == \"$name\") | .conclusion" \
-              | head -n1)
-
-            if [ -z "$conclusion" ]; then
-              conclusion="not run"
-            fi
-
-            echo "| $name | $kind | $conclusion |" >> "$GITHUB_STEP_SUMMARY"
-            echo "$name -> $conclusion"
-
-            if [ "$kind" = "BLOCKING" ] && [ "$conclusion" = "failure" ]; then
-              gate_failed=1
-            fi
-          }
-
-          for wf in "${BLOCKING_WORKFLOWS[@]}"; do
-            check_workflow "$wf" "BLOCKING"
-          done
-
-          for wf in "${WARN_WORKFLOWS[@]}"; do
-            check_workflow "$wf" "WARN"
-          done
-
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-
-          if [ "$gate_failed" = "1" ]; then
-            echo "**Result: BLOCKED** — one or more blocking scans failed." >> "$GITHUB_STEP_SUMMARY"
-            echo "Security gate BLOCKED: a blocking scan (Gitleaks, SAST, Container, or IaC) failed."
-            exit 1
-          else
-            echo "**Result: PASSED** — no blocking scans failed. Check WARN rows above for non-blocking findings." >> "$GITHUB_STEP_SUMMARY"
-            echo "Security gate PASSED."
-          fi
+        run: bash pipeline/scripts/security-gate.sh

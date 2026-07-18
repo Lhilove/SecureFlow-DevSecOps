@@ -12,8 +12,23 @@ Without this stage, there's no single place that says "is this commit
 actually safe to move forward," only a scattered set of independently
 red or green checks a person has to manually reconcile.
 
-## Design: Aggregation via `workflow_run`, Not a Monolith
-There were two ways to build this:
+## Design: A Standalone Script, Called by the Workflow
+The project brief explicitly names `pipeline/scripts/security-gate.sh`
+as an expected deliverable, the aggregation logic lives there as a
+plain bash script, not inline in the workflow YAML. The workflow file
+(`security-gate.yml`) is now a thin wrapper: it sets three environment
+variables (`GH_TOKEN`, `REPO`, `SHA`) and calls the script.
+
+This split matters for a few reasons:
+- **Matches the brief's expected file structure** exactly.
+- **Testable locally.** Given a `GH_TOKEN` with `actions:read` on the
+  repo, `REPO`, and `SHA`, the script runs identically outside CI:
+  `GH_TOKEN=... REPO=owner/repo SHA=<commit> bash pipeline/scripts/security-gate.sh`
+- **Reusable.** The same script could be called from a different
+  trigger (a scheduled re-check, a manual dispatch) without duplicating
+  logic in another workflow file.
+
+There were two ways to build the aggregation itself:
 
 1. **Rewrite every scanning workflow as a reusable workflow**
    (`workflow_call`) and have one orchestrator workflow call all of
@@ -21,8 +36,8 @@ There were two ways to build this:
    "correct" long-term architecture, but means touching and re-testing
    seven already-working, already-verified workflow files.
 2. **Leave every existing scanning workflow untouched**, and build a
-   separate aggregator that triggers on their completion
-   (`workflow_run`) and queries their results via the GitHub API.
+   separate script that triggers on their completion (`workflow_run`)
+   and queries their results via the GitHub API.
 
 This project uses approach 2. It's a deliberate tradeoff: lower risk
 (nothing that already works gets touched or re-broken), faster to
@@ -32,18 +47,20 @@ GitHub Actions pattern than a single unified pipeline.
 ## How It Works
 `.github/workflows/security-gate.yml` triggers whenever any of five
 named workflows complete (`workflow_run`, `types: [completed]`):
-Gitleaks, SAST, Container Scanning, IaC Scanning, DAST.
+Gitleaks, SAST, Container Scanning, IaC Scanning, DAST. It then runs
+`pipeline/scripts/security-gate.sh`, passing the triggering commit's
+SHA.
 
-When triggered, the gate:
+The script:
 1. Reads `github.event.workflow_run.head_sha`, the commit the
    triggering workflow just ran against
 2. Queries the GitHub Actions API (`gh api .../actions/runs`) for all
    workflow runs against that same commit
 3. Checks the conclusion of each of the five tracked workflows
 4. Classifies them:
-   - **Blocking**: Gitleaks, SAST, Container Scanning, IaC Scanning:
+   - **Blocking**: Gitleaks, SAST, Container Scanning, IaC Scanning
      a `failure` conclusion here fails the gate
-   - **Warn-only**: DAST: a `failure` conclusion is reported in the
+   - **Warn-only**: DAST a `failure` conclusion is reported in the
      summary but does not fail the gate
 5. Writes a markdown table to the GitHub Actions job summary showing
    every workflow's conclusion
