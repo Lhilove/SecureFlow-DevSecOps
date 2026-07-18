@@ -3,7 +3,7 @@
 ## Purpose
 Dependency scanning checks third-party packages against known
 vulnerability databases (CVEs), independent of anything wrong in this
-project's own code. This complements SAST (issue #3), which only
+project's own code. This complements SAST, which only
 analyzes code actually written for this project; SAST has no
 visibility into vulnerabilities shipped inside libraries this project
 imports.
@@ -58,7 +58,7 @@ in SAST: a soft run (`|| true`) captures the report, then a second
 strict run determines the actual job outcome.
 
 ## Why This Stays Red
-Consistent with issue #3, no automatic remediation happens in this
+Consistent with SAST, no automatic remediation happens in this
 stage. Version bumps for vulnerable packages are deferred to the
 technical article documenting this project, at which point pinned
 versions will be updated and this stage is expected to turn green.
@@ -69,7 +69,7 @@ versions will be updated and this stage is expected to turn green.
   are audited too by pip-audit, but version resolution can differ
   between a local `pip install` and what's actually running inside
   the Docker image; ideally this should be cross-checked against a
-  lockfile or the built image itself (see issue #5's container
+  lockfile or the built image itself (see container 
   scanning, which examines what's actually installed in the image).
 - Vulnerability databases are point-in-time. A clean pip-audit run
   today doesn't guarantee no future disclosures against the same

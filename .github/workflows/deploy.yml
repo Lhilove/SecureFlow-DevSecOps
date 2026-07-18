@@ -1,0 +1,72 @@
+name: Deploy to Local Kubernetes (kind)
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-local:
+    name: Deploy to kind Cluster
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Service Images
+        run: |
+          docker build -t secureflow/auth-service:latest services/auth-service
+          docker build -t secureflow/transaction-service:latest services/transaction-service
+          docker build -t secureflow/frontend:latest services/frontend
+
+      - name: Create kind Cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: secureflow-local
+          wait: 90s
+
+      - name: Load Images into kind
+        run: |
+          kind load docker-image secureflow/auth-service:latest --name secureflow-local
+          kind load docker-image secureflow/transaction-service:latest --name secureflow-local
+          kind load docker-image secureflow/frontend:latest --name secureflow-local
+
+      - name: Deploy Manifests (Kustomize)
+        run: kubectl apply -k infra/kubernetes/base
+
+      - name: Wait for Deployments
+        run: |
+          kubectl -n secureflow wait --for=condition=available --timeout=180s \
+            deployment/auth-db deployment/transaction-db \
+            deployment/auth-service deployment/transaction-service deployment/frontend
+
+      - name: Show Cluster State
+        if: always()
+        run: |
+          echo "--- Pods ---"
+          kubectl -n secureflow get pods -o wide
+          echo "--- Services ---"
+          kubectl -n secureflow get svc
+          echo "--- Events ---"
+          kubectl -n secureflow get events --sort-by='.lastTimestamp'
+
+      - name: Dump Pod Logs (on failure)
+        if: failure()
+        run: |
+          for pod in $(kubectl -n secureflow get pods -o name); do
+            echo "=== $pod ==="
+            kubectl -n secureflow logs "$pod" --all-containers --tail=100 || true
+          done
+
+      - name: Smoke Test Frontend
+        run: |
+          kubectl -n secureflow port-forward svc/frontend 5000:5000 &
+          sleep 5
+          curl -sf http://localhost:5000 > /dev/null && echo "Frontend reachable."
