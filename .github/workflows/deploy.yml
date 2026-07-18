@@ -41,6 +41,21 @@ jobs:
       - name: Deploy Manifests (Kustomize)
         run: kubectl apply -k infra/kubernetes/base
 
+      - name: Patch Image Pull Policy (kind-local only)
+        # infra/kubernetes/base intentionally omits imagePullPolicy, and the
+        # :latest tag on secureflow/* images makes Kubernetes default to
+        # 'Always'. That default ignores images already loaded into kind
+        # (kind load docker-image) and tries to pull from a real registry
+        # instead, where these images don't exist. This patch is applied
+        # only in this CI deploy step, not to the committed manifests, so
+        # the deliberately broken baseline stays intact for Checkov and
+        # future hardening work.
+        run: |
+          for deploy in auth-service transaction-service frontend; do
+            kubectl -n secureflow patch deployment "$deploy" --type=json \
+              -p='[{"op":"add","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"IfNotPresent"}]'
+          done
+
       - name: Wait for Deployments
         run: |
           kubectl -n secureflow wait --for=condition=available --timeout=180s \
