@@ -69,6 +69,18 @@ jobs:
             deployment/auth-db deployment/transaction-db \
             deployment/auth-service deployment/transaction-service deployment/frontend
 
+      - name: DEBUG - Dump the Actual Shipped Rule Definitions
+        run: |
+          FALCO_POD=$(kubectl -n falco get pod -l app.kubernetes.io/name=falco -o jsonpath='{.items[0].metadata.name}')
+          echo "===== Falco rules files present ====="
+          kubectl -n falco exec "$FALCO_POD" -c falco -- ls -la /etc/falco/rules.d/ 2>/dev/null || \
+          kubectl -n falco exec "$FALCO_POD" -c falco -- find / -maxdepth 3 -iname "*rules*.yaml" 2>/dev/null
+
+          echo "===== Searching for 'binary dir' rule text ====="
+          kubectl -n falco exec "$FALCO_POD" -c falco -- sh -c \
+            'grep -rl "binary dir" /etc/falco/ 2>/dev/null | while read f; do echo "--- $f ---"; grep -B2 -A15 "binary dir" "$f"; done' \
+            || echo "(no file contained 'binary dir')"
+
       - name: Start Streaming Falco Logs to a File
         run: |
           kubectl -n falco logs -l app.kubernetes.io/name=falco -f --since=1s > falco-output.log 2>&1 &
