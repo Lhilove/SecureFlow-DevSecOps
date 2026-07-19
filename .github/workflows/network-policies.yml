@@ -28,7 +28,7 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: secureflow-netpol
-          config: infra/kubernetes/network-policies/kind-no-cni-config.yaml
+          config: infra/kubernetes/network-policies/ci/kind-no-cni-config.yaml
           wait: 0s
 
       - name: Install Calico CNI
