@@ -1,0 +1,47 @@
+# Helm values for HashiCorp Vault (hashicorp/vault chart).
+# Standalone server with persistent (file-backed) storage — not dev mode.
+# Dev mode auto-unseals with a throwaway root token and never persists
+# anything; that's fine for a five-second demo but doesn't exercise the
+# real init/unseal flow every production Vault deployment actually needs.
+
+server:
+  dev:
+    enabled: false
+
+  standalone:
+    enabled: true
+    config: |
+      listener "tcp" {
+        address     = "[::]:8200"
+        tls_disable = true
+      }
+      storage "file" {
+        path = "/vault/data"
+      }
+
+  dataStorage:
+    enabled: true
+    size: 1Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# The Agent Injector is the mutating webhook that watches for annotated
+# pods and injects a sidecar to fetch secrets from Vault at pod startup.
+injector:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+ui:
+  enabled: false
