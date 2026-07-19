@@ -69,6 +69,12 @@ jobs:
       - name: Initialize, Unseal, and Configure Vault
         run: bash pipeline/scripts/vault-init.sh
 
+      - name: Build Service Images
+        run: |
+          docker build -t secureflow/auth-service:latest services/auth-service
+          docker build -t secureflow/transaction-service:latest services/transaction-service
+          docker build -t secureflow/frontend:latest services/frontend
+
       - name: Load Images into kind
         run: |
           kind load docker-image secureflow/auth-service:latest --name secureflow-vault
