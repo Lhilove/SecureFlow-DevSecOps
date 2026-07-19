@@ -1,0 +1,122 @@
+name: Falco (Runtime Threat Detection)
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  falco-runtime-detection:
+    name: Verify Falco Detects Intentional Test Events
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create kind Cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: secureflow-falco
+          wait: 90s
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Add Falco Helm Repo
+        run: |
+          helm repo add falcosecurity https://falcosecurity.github.io/charts
+          helm repo update
+
+      - name: Install Falco
+        run: |
+          helm install falco falcosecurity/falco \
+            --namespace falco \
+            --create-namespace \
+            -f infra/falco/values.yaml \
+            --wait --timeout=180s
+
+      - name: Wait for Falco DaemonSet Ready
+        run: |
+          kubectl -n falco rollout status daemonset/falco --timeout=120s
+
+      - name: Build Service Images
+        run: |
+          docker build -t secureflow/auth-service:latest services/auth-service
+          docker build -t secureflow/transaction-service:latest services/transaction-service
+          docker build -t secureflow/frontend:latest services/frontend
+
+      - name: Load Images into kind
+        run: |
+          kind load docker-image secureflow/auth-service:latest --name secureflow-falco
+          kind load docker-image secureflow/transaction-service:latest --name secureflow-falco
+          kind load docker-image secureflow/frontend:latest --name secureflow-falco
+
+      - name: Deploy Application
+        run: |
+          kubectl apply -k infra/kubernetes/base
+          for deploy in auth-service transaction-service frontend; do
+            kubectl -n secureflow patch deployment "$deploy" --type=json \
+              -p='[{"op":"add","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"IfNotPresent"}]'
+          done
+          kubectl -n secureflow wait --for=condition=available --timeout=180s \
+            deployment/auth-db deployment/transaction-db \
+            deployment/auth-service deployment/transaction-service deployment/frontend
+
+      - name: Start Streaming Falco Logs to a File
+        run: |
+          kubectl -n falco logs -l app.kubernetes.io/name=falco -f --since=1s > falco-output.log 2>&1 &
+          echo "FALCO_LOG_PID=$!" >> "$GITHUB_ENV"
+          sleep 5
+
+      - name: "TEST 1 - Trigger: read /etc/shadow inside auth-service"
+        run: |
+          POD=$(kubectl -n secureflow get pod -l svc=auth-service -o jsonpath='{.items[0].metadata.name}')
+          kubectl -n secureflow exec "$POD" -c auth-service -- cat /etc/shadow > /dev/null 2>&1 || true
+
+      - name: "TEST 2 - Trigger: run apt-get inside auth-service"
+        run: |
+          POD=$(kubectl -n secureflow get pod -l svc=auth-service -o jsonpath='{.items[0].metadata.name}')
+          kubectl -n secureflow exec "$POD" -c auth-service -- apt-get update > /dev/null 2>&1 || true
+
+      - name: Give Falco a Moment to Process and Emit Alerts
+        run: sleep 15
+
+      - name: Stop Log Streaming
+        run: kill "$FALCO_LOG_PID" 2>/dev/null || true
+
+      - name: Verify Falco Detected Both Test Events
+        run: |
+          echo "===== Captured Falco output ====="
+          cat falco-output.log || echo "(no output captured)"
+          echo "=================================="
+
+          FAILED=0
+
+          if grep -q "Read sensitive file untrusted" falco-output.log; then
+            echo "PASS: Falco detected the /etc/shadow read (Read sensitive file untrusted)."
+          else
+            echo "FAIL: Falco did NOT detect the /etc/shadow read."
+            FAILED=1
+          fi
+
+          if grep -q "Launch Package Management Process in Container" falco-output.log; then
+            echo "PASS: Falco detected the apt-get execution (Launch Package Management Process in Container)."
+          else
+            echo "FAIL: Falco did NOT detect the apt-get execution."
+            FAILED=1
+          fi
+
+          exit $FAILED
+
+      - name: Show Falco Pod State (on failure)
+        if: failure()
+        run: |
+          kubectl -n falco get pods -o wide
+          kubectl -n falco describe pod -l app.kubernetes.io/name=falco

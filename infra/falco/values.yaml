@@ -1,0 +1,17 @@
+# Helm values for Falco (falcosecurity/falco chart).
+# modern_ebpf: no kernel module compilation, no privileged driver-loader
+# init container needed, works on any kernel >= 5.8 (GitHub Actions
+# runners qualify). This is the recommended driver for CI contexts.
+driver:
+  kind: modern_ebpf
+
+falco:
+  json_output: true
+  json_include_output_property: true
+  log_stderr: true
+  log_syslog: false
+
+tty: false
+
+falcosidekick:
+  enabled: false
