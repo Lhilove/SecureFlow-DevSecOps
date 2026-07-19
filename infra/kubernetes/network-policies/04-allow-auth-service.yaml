@@ -1,0 +1,45 @@
+# auth-service accepts traffic from frontend (login/register) and from
+# transaction-service (JWT verification via /verify). It needs egress
+# only to its own database.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-auth-service-ingress
+  namespace: secureflow
+spec:
+  podSelector:
+    matchLabels:
+      svc: auth-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              svc: frontend
+        - podSelector:
+            matchLabels:
+              svc: transaction-service
+      ports:
+        - protocol: TCP
+          port: 5001
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-auth-service-egress
+  namespace: secureflow
+spec:
+  podSelector:
+    matchLabels:
+      svc: auth-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              svc: auth-db
+      ports:
+        - protocol: TCP
+          port: 5432

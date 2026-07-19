@@ -1,0 +1,48 @@
+# transaction-service accepts traffic from frontend only. It needs
+# egress to its own database AND to auth-service, for token verification.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-transaction-service-ingress
+  namespace: secureflow
+spec:
+  podSelector:
+    matchLabels:
+      svc: transaction-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              svc: frontend
+      ports:
+        - protocol: TCP
+          port: 5002
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-transaction-service-egress
+  namespace: secureflow
+spec:
+  podSelector:
+    matchLabels:
+      svc: transaction-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              svc: transaction-db
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              svc: auth-service
+      ports:
+        - protocol: TCP
+          port: 5001

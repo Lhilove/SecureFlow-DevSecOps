@@ -1,0 +1,14 @@
+# Default-deny-all baseline (IV-07 fix). With no other NetworkPolicy
+# matching a pod, this blocks ALL ingress and egress traffic in the
+# secureflow namespace. Every subsequent policy in this directory is
+# an explicit allow carved out of this default-deny baseline.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: secureflow
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

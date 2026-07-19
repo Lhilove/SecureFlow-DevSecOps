@@ -1,0 +1,21 @@
+# Every pod needs DNS to resolve Service names (e.g. "auth-service",
+# "auth-db"). Without this, default-deny-all silently breaks every
+# other allow rule below, since Service DNS lookups would fail before
+# traffic ever reaches the intended destination.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: secureflow
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
