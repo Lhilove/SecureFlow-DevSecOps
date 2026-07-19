@@ -83,7 +83,9 @@ jobs:
       - name: "TEST 2 - Trigger: run apt-get inside auth-service"
         run: |
           POD=$(kubectl -n secureflow get pod -l svc=auth-service -o jsonpath='{.items[0].metadata.name}')
-          kubectl -n secureflow exec "$POD" -c auth-service -- apt-get update > /dev/null 2>&1 || true
+          echo "Running apt-get update in pod: $POD"
+          kubectl -n secureflow exec "$POD" -c auth-service -- apt-get update
+          echo "Exit code: $?"
 
       - name: Give Falco a Moment to Process and Emit Alerts
         run: sleep 15
