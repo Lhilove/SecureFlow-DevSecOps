@@ -1,0 +1,25 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8snolatesttag
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sNoLatestTag
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8snolatesttag
+
+        violation[{"msg": msg}] {
+          c := input.review.object.spec.template.spec.containers[_]
+          endswith(c.image, ":latest")
+          msg := sprintf("Container '%v' uses ':latest' tag, pin to a specific version or digest (CK-06)", [c.name])
+        }
+
+        violation[{"msg": msg}] {
+          c := input.review.object.spec.template.spec.containers[_]
+          not contains(c.image, ":")
+          msg := sprintf("Container '%v' has no tag specified, defaults to ':latest' (CK-06)", [c.name])
+        }

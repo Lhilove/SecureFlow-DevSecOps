@@ -1,0 +1,67 @@
+name: OPA Gatekeeper (Admission Control)
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  gatekeeper-enforcement:
+    name: Verify Gatekeeper Rejects Insecure Manifests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create kind Cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: secureflow-gatekeeper
+          wait: 90s
+
+      - name: Install Gatekeeper
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.23.0/deploy/gatekeeper.yaml
+          kubectl -n gatekeeper-system wait --for=condition=available --timeout=180s \
+            deployment/gatekeeper-controller-manager deployment/gatekeeper-audit
+
+      - name: Create Namespace
+        run: kubectl apply -f infra/kubernetes/base/namespace.yaml
+
+      - name: Apply ConstraintTemplates
+        run: kubectl apply -f infra/gatekeeper/templates/
+
+      - name: Wait for ConstraintTemplate CRDs
+        run: |
+          for crd in k8snoprivilegedcontainer k8snorootuser k8snolatesttag k8srequireresourcelimits; do
+            kubectl wait --for=condition=established --timeout=60s crd/"${crd}.constraints.gatekeeper.sh"
+          done
+          # Give the constraint controller a moment to pick up the new CRDs.
+          sleep 10
+
+      - name: Apply Constraints
+        run: kubectl apply -f infra/gatekeeper/constraints/
+
+      - name: Give Gatekeeper a Moment to Sync
+        run: sleep 10
+
+      - name: Attempt to Deploy the Broken Baseline (Expect Rejection)
+        id: attempt
+        continue-on-error: true
+        run: kubectl apply -k infra/kubernetes/base
+
+      - name: Verify Gatekeeper Actually Blocked It
+        run: |
+          if [ "${{ steps.attempt.outcome }}" = "success" ]; then
+            echo "Gatekeeper did NOT block the insecure manifests — this is a failure of the admission control stage itself."
+            exit 1
+          else
+            echo "Gatekeeper correctly rejected the insecure manifests. See the denial messages in the previous step's output."
+          fi

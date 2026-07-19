@@ -73,7 +73,39 @@ necessarily a workflow bug, check whether it's actually one of the
 planted CK findings blocking scheduling itself, that's useful evidence
 for the technical article, not just noise to debug away.
 
-## Relationship to Later Stages
+## A Real Interaction Between a Kubernetes Default and a Planted Issue
+This stage surfaced a genuine, confirmed failure worth documenting on
+its own: none of the manifests set `imagePullPolicy` explicitly, and
+Kubernetes defaults to `imagePullPolicy: Always` for any image tagged
+`:latest`. Since `secureflow/auth-service`, `secureflow/frontend`, and
+`secureflow/transaction-service` only exist as images already loaded
+locally into the kind cluster (not on any real registry), that default
+caused every pod to ignore the loaded image and instead attempt, and
+fail, a real pull from Docker Hub: `pull access denied, repository
+does not exist`.
+
+This traces directly back to a real Checkov finding from IaC Scanning:
+`CKV_K8S_15 "Image Pull Policy should be Always"` and the `:latest`
+tag issue (CK-06). The planted misconfiguration didn't just fail a
+scanner, it caused a genuine functional deployment failure once a real
+cluster was involved.
+
+**Fix applied in this workflow only, not the committed manifests:**
+after `kubectl apply`, a patch step (`kubectl patch deployment ...
+imagePullPolicy: IfNotPresent`) is applied to the three custom-image
+Deployments. This makes local deployment work without editing
+`infra/kubernetes/base`, which needs to stay in its deliberately
+broken state for Checkov and the future hardened-overlays stage.
+
+The patch triggers a normal Kubernetes rolling update: a new
+ReplicaSet is created with the patched policy while the old one (still
+defaulting to `Always`) scales down. Watching the event log during this
+transition, the old pods failing with `ImagePullBackOff` and the new
+pods succeeding with `"already present on machine"`, is a clean, real
+demonstration of the fix actually working, not just theoretically
+correct.
+
+
 This stage exists to prove the pipeline can reach a real, running
 cluster at all, nothing more. Everything that makes the cluster
 actually secure comes after it:
