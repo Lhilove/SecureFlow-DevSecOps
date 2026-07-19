@@ -55,13 +55,6 @@ jobs:
           name: bandit-report
           path: bandit-report.json
 
-      - name: Upload Bandit Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-report
-          path: bandit-report.json
-
 
   sonarcloud:
     name: SonarCloud Scan
