@@ -59,10 +59,15 @@ POLICY
 echo "== Enabling Kubernetes auth method =="
 vault auth enable kubernetes || echo "(already enabled)"
 
-# Vault runs in-cluster, so it can reach the Kubernetes API directly
-# via the standard in-cluster service discovery env vars.
+# This script runs on the CI runner (against Vault via port-forward),
+# not inside a pod, so the in-cluster KUBERNETES_SERVICE_HOST/PORT env
+# vars aren't available here. Get the real API server address from
+# kubectl's own config instead. kind exposes its control plane on
+# localhost, but Vault itself (running inside the cluster) needs the
+# address as reachable from *within* the cluster, so use the Kubernetes
+# default in-cluster DNS name instead of whatever kubectl sees locally.
 vault write auth/kubernetes/config \
-  kubernetes_host="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+  kubernetes_host="https://kubernetes.default.svc"
 
 echo "== Binding secureflow namespace's service account to the policy =="
 vault write auth/kubernetes/role/secureflow-role \
