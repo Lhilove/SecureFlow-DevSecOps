@@ -1,0 +1,9 @@
+# kind cluster config that disables the default CNI (kindnet), so Calico
+# can be installed instead. kindnet does not enforce NetworkPolicy at
+# all; without this, every NetworkPolicy in this directory would apply
+# without error but do nothing, silently making any enforcement test
+# meaningless.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  disableDefaultCNI: true

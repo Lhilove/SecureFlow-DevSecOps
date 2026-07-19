@@ -1,0 +1,19 @@
+# Frontend is the only service meant to receive traffic from outside
+# the cluster (it's exposed via NodePort). Allow ingress from anywhere
+# on its port; this is the one deliberate exception to "deny by default"
+# since it's the application's actual entry point.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-ingress
+  namespace: secureflow
+spec:
+  podSelector:
+    matchLabels:
+      svc: frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 5000

@@ -1,0 +1,28 @@
+# Frontend needs to reach auth-service (login/register) and
+# transaction-service (dashboard/transfer). Nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-services
+  namespace: secureflow
+spec:
+  podSelector:
+    matchLabels:
+      svc: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              svc: auth-service
+      ports:
+        - protocol: TCP
+          port: 5001
+    - to:
+        - podSelector:
+            matchLabels:
+              svc: transaction-service
+      ports:
+        - protocol: TCP
+          port: 5002

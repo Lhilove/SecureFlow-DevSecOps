@@ -1,0 +1,41 @@
+# Each database accepts traffic only from its own service, nothing else,
+# not even the other database, not even directly from frontend.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-auth-db-ingress
+  namespace: secureflow
+spec:
+  podSelector:
+    matchLabels:
+      svc: auth-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              svc: auth-service
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-transaction-db-ingress
+  namespace: secureflow
+spec:
+  podSelector:
+    matchLabels:
+      svc: transaction-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              svc: transaction-service
+      ports:
+        - protocol: TCP
+          port: 5432
