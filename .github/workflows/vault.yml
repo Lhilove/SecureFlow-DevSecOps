@@ -69,6 +69,12 @@ jobs:
       - name: Initialize, Unseal, and Configure Vault
         run: bash pipeline/scripts/vault-init.sh
 
+      - name: Load Images into kind
+        run: |
+          kind load docker-image secureflow/auth-service:latest --name secureflow-vault
+          kind load docker-image secureflow/transaction-service:latest --name secureflow-vault
+          kind load docker-image secureflow/frontend:latest --name secureflow-vault
+
       - name: Deploy Application (Vault-Annotated auth-service Only)
         run: |
           kubectl apply -k infra/kubernetes/base
