@@ -1,0 +1,133 @@
+name: HashiCorp Vault (Secrets Management)
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  vault-secrets:
+    name: Verify Vault-Injected Secrets
+    runs-on: ubuntu-latest
+    env:
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      # Test-only values, matching the pattern already established for
+      # .env in this project (deliberately fake, never live credentials).
+      AUTH_DB_PASSWORD: "vault-managed-authpassword"
+      TX_DB_PASSWORD: "vault-managed-txnpassword"
+      JWT_SECRET: "vault-managed-jwtsecret"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create kind Cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: secureflow-vault
+          wait: 90s
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install jq
+        run: sudo apt-get update -q && sudo apt-get install -y jq
+
+      - name: Add HashiCorp Helm Repo
+        run: |
+          helm repo add hashicorp https://helm.releases.hashicorp.com
+          helm repo update
+
+      - name: Install Vault
+        run: |
+          kubectl create namespace vault
+          helm install vault hashicorp/vault \
+            --namespace vault \
+            -f infra/vault/values.yaml \
+            --wait --timeout=180s
+
+      - name: Wait for Vault Pod to Exist
+        run: kubectl -n vault wait --for=condition=PodScheduled pod/vault-0 --timeout=60s
+
+      - name: Port-Forward to Vault
+        run: |
+          kubectl -n vault port-forward svc/vault 8200:8200 &
+          sleep 5
+
+      - name: Install Vault CLI
+        run: |
+          wget -q https://releases.hashicorp.com/vault/1.20.4/vault_1.20.4_linux_amd64.zip
+          unzip -q vault_1.20.4_linux_amd64.zip
+          sudo mv vault /usr/local/bin/vault
+
+      - name: Initialize, Unseal, and Configure Vault
+        run: bash pipeline/scripts/vault-init.sh
+
+      - name: Build Service Images
+        run: |
+          docker build -t secureflow/auth-service:latest services/auth-service
+          docker build -t secureflow/transaction-service:latest services/transaction-service
+          docker build -t secureflow/frontend:latest services/frontend
+
+      - name: Load Images into kind
+        run: |
+          kind load docker-image secureflow/auth-service:latest --name secureflow-vault
+          kind load docker-image secureflow/transaction-service:latest --name secureflow-vault
+          kind load docker-image secureflow/frontend:latest --name secureflow-vault
+
+      - name: Deploy Application (Vault-Annotated auth-service Only)
+        run: |
+          kubectl apply -k infra/kubernetes/base
+          for deploy in auth-service transaction-service frontend; do
+            kubectl -n secureflow patch deployment "$deploy" --type=json \
+              -p='[{"op":"add","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"IfNotPresent"}]'
+          done
+
+          # Annotate auth-service to receive Vault-injected secrets.
+          # Applied at deploy time, not committed to infra/kubernetes/base,
+          # same pattern used for the imagePullPolicy patch in the local
+          # deploy stage — base/ stays as the deliberately broken baseline.
+          kubectl -n secureflow patch deployment auth-service --type=json -p='[
+            {"op":"add","path":"/spec/template/metadata/annotations","value":{
+              "vault.hashicorp.com/agent-inject": "true",
+              "vault.hashicorp.com/role": "secureflow-role",
+              "vault.hashicorp.com/agent-inject-secret-db-password": "secret/data/secureflow/auth-db",
+              "vault.hashicorp.com/agent-inject-template-db-password": "{{- with secret \"secret/data/secureflow/auth-db\" -}}{{ .Data.data.password }}{{- end -}}"
+            }}
+          ]'
+
+          kubectl -n secureflow wait --for=condition=available --timeout=180s \
+            deployment/auth-db deployment/transaction-db \
+            deployment/auth-service deployment/transaction-service deployment/frontend
+
+      - name: Verify Secret Was Injected into auth-service Pod
+        run: |
+          POD=$(kubectl -n secureflow get pod -l svc=auth-service -o jsonpath='{.items[0].metadata.name}')
+          echo "Checking injected secret in pod: $POD"
+
+          # The Agent Injector adds a sidecar; confirm it's actually running.
+          kubectl -n secureflow get pod "$POD" -o jsonpath='{.spec.containers[*].name}'
+          echo ""
+
+          INJECTED_VALUE=$(kubectl -n secureflow exec "$POD" -c auth-service -- \
+            cat /vault/secrets/db-password)
+
+          if [ "$INJECTED_VALUE" = "$AUTH_DB_PASSWORD" ]; then
+            echo "PASS: Vault-injected secret matches the value stored in Vault."
+          else
+            echo "FAIL: injected secret did not match expected value."
+            exit 1
+          fi
+
+      - name: Show Vault + App State (on failure)
+        if: failure()
+        run: |
+          kubectl -n vault get pods
+          kubectl -n secureflow get pods
+          kubectl -n secureflow describe pod -l svc=auth-service
