@@ -15,3 +15,20 @@ tty: false
 
 falcosidekick:
   enabled: false
+
+customRules:
+  custom-rules.yaml: |-
+    - macro: bin_dir
+      condition: fd.directory in (/bin, /sbin, /usr/bin, /usr/sbin)
+
+    - rule: Write below binary dir
+      desc: Detect attempts to write to binary directories
+      condition: >
+        bin_dir and evt.type in (open,openat,openat2) and
+        evt.is_open_write=true and fd.typechar='f' and fd.num>=0
+      output: >
+        File below a known binary directory opened for writing
+        (user=%user.name command=%proc.cmdline file=%fd.name
+        container_id=%container.id image=%container.image.repository)
+      priority: ERROR
+      tags: [filesystem, mitre_persistence]
