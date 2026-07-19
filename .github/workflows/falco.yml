@@ -80,11 +80,12 @@ jobs:
           POD=$(kubectl -n secureflow get pod -l svc=auth-service -o jsonpath='{.items[0].metadata.name}')
           kubectl -n secureflow exec "$POD" -c auth-service -- cat /etc/shadow > /dev/null 2>&1 || true
 
-      - name: "TEST 2 - Trigger: run apt-get inside auth-service"
+      - name: "TEST 2 - Trigger: write below /bin inside auth-service"
         run: |
           POD=$(kubectl -n secureflow get pod -l svc=auth-service -o jsonpath='{.items[0].metadata.name}')
-          echo "Running apt-get update in pod: $POD"
-          kubectl -n secureflow exec "$POD" -c auth-service -- apt-get update
+          echo "Writing to /bin in pod: $POD"
+          kubectl -n secureflow exec "$POD" -c auth-service -- \
+            sh -c "touch /bin/falco-test-marker"
           echo "Exit code: $?"
 
       - name: Give Falco a Moment to Process and Emit Alerts
@@ -98,11 +99,8 @@ jobs:
           echo "===== Full captured Falco output (line count) ====="
           wc -l falco-output.log || echo "(no output captured)"
 
-          echo "===== Any lines mentioning apt/package/dpkg ====="
-          grep -i -E "apt|package|dpkg" falco-output.log || echo "(no matches at all for apt/package/dpkg)"
-
-          echo "===== Any lines mentioning auth-service around the apt-get timeframe ====="
-          grep "auth-service" falco-output.log | tail -20 || echo "(no auth-service lines found)"
+          echo "===== Any lines mentioning bin/write ====="
+          grep -i -E "binary dir|/bin/falco-test-marker" falco-output.log || echo "(no matches found)"
           echo "=================================="
 
           FAILED=0
@@ -114,10 +112,10 @@ jobs:
             FAILED=1
           fi
 
-          if grep -qi -E "apt|package|dpkg" falco-output.log; then
-            echo "INFO: found at least one apt/package/dpkg-related line, see above for the actual rule name."
+          if grep -qi "Write below binary dir" falco-output.log; then
+            echo "PASS: Falco detected the write to /bin (Write below binary dir)."
           else
-            echo "FAIL: Falco produced no output at all referencing apt/package/dpkg."
+            echo "FAIL: Falco did NOT detect the write to /bin."
             FAILED=1
           fi
 
