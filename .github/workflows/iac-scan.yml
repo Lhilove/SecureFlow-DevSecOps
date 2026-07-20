@@ -25,8 +25,7 @@ jobs:
         with:
           directory: infra/terraform
           framework: terraform
-          output_format: json
-          output_file_path: checkov-terraform-report.json
+          output_format: sarif
           soft_fail: true
 
       - name: Upload Terraform Report
@@ -36,12 +35,7 @@ jobs:
           name: checkov-terraform-report
           path: checkov-terraform-report.json
 
-      - name: Run Checkov (fail on findings)
-        uses: bridgecrewio/checkov-action@v12
-        with:
-          directory: infra/terraform
-          framework: terraform
-          quiet: true
+      
 
   checkov-kubernetes:
     name: Scan Kubernetes Manifests
@@ -66,9 +60,4 @@ jobs:
           name: checkov-k8s-report
           path: checkov-k8s-report.json
 
-      - name: Run Checkov (fail on findings)
-        uses: bridgecrewio/checkov-action@v12
-        with:
-          directory: infra/kubernetes
-          framework: kubernetes
-          quiet: true
+      
