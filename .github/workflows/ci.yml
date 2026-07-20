@@ -1,0 +1,46 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    name: SecureFlow DevSecOps Pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pipeline Triggered
+        run: |
+          echo "=================================================="
+          echo "  SecureFlow DevSecOps Pipeline"
+          echo "=================================================="
+          echo "Commit : ${{ github.sha }}"
+          echo "Branch : ${{ github.ref_name }}"
+          echo "Actor  : ${{ github.actor }}"
+          echo "Event  : ${{ github.event_name }}"
+          echo ""
+          echo "Pipeline stages running in parallel:"
+          echo "  [1] Secret Scanning       - Gitleaks"
+          echo "  [1] Static Analysis       - Bandit + SonarCloud"
+          echo "  [1] Dependency Scanning   - pip-audit"
+          echo "  [1] Container Scanning    - Trivy"
+          echo "  [1] IaC Scanning          - Checkov (Terraform + Kubernetes)"
+          echo "  [2] DAST                  - OWASP ZAP (post-deploy)"
+          echo "  [3] Security Gate         - Aggregates all results"
+          echo "  [4] Image Signing         - Cosign + SBOM"
+          echo "  [5] Deploy                - kind cluster"
+          echo "  [6] Runtime Security      - Falco"
+          echo "  [6] Vault                 - HashiCorp secrets injection"
+          echo "  [6] Network Policies      - Default deny enforcement"
+          echo "  [6] OPA Gatekeeper        - Admission control"
+          echo "=================================================="
+          echo "Monitor individual workflows in the Actions tab"
+          echo "=================================================="
