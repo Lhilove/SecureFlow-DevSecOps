@@ -1,0 +1,34 @@
+# Helm values for Falco (falcosecurity/falco chart).
+# modern_ebpf: no kernel module compilation, no privileged driver-loader
+# init container needed, works on any kernel >= 5.8 (GitHub Actions
+# runners qualify). This is the recommended driver for CI contexts.
+driver:
+  kind: modern_ebpf
+
+falco:
+  json_output: true
+  json_include_output_property: true
+  log_stderr: true
+  log_syslog: false
+
+tty: false
+
+falcosidekick:
+  enabled: false
+
+customRules:
+  custom-rules.yaml: |-
+    - macro: bin_dir
+      condition: fd.directory in (/bin, /sbin, /usr/bin, /usr/sbin)
+
+    - rule: Write below binary dir
+      desc: Detect attempts to write to binary directories
+      condition: >
+        bin_dir and evt.type in (open,openat,openat2) and
+        evt.is_open_write=true and fd.typechar='f' and fd.num>=0
+      output: >
+        File below a known binary directory opened for writing
+        (user=%user.name command=%proc.cmdline file=%fd.name
+        container_id=%container.id image=%container.image.repository)
+      priority: ERROR
+      tags: [filesystem, mitre_persistence]
