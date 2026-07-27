@@ -133,50 +133,174 @@ secureflow/
     └── terraform/                    ← IV-08, IV-09, IV-10 + the modules Checkov will scan
 ```
 
----
+# SecureFlow DevSecOps — Solution Implementation
 
-## What's NOT In This Repository
-
-Everything in this list is your job to build, based on the project brief:
-
-- `.github/workflows/*` — the GitHub Actions pipeline
-- `.gitleaks.toml` — custom Gitleaks rules for Flask/JWT/DB patterns
-- `sonar-project.properties` — SonarQube configuration
-- `pipeline/scripts/security-gate.sh` — the aggregation script
-- Cosign keys and signing workflow
-- OPA Gatekeeper ConstraintTemplates and Constraints
-- Falco custom rules
-- HashiCorp Vault policies, roles, and Agent Injector annotations
-- Kubernetes NetworkPolicies
-- Hardened Kustomize overlays (the `base/` here is the broken version)
-- Prometheus configuration and Grafana dashboards
-- OWASP ZAP scan configuration
-
-If you find yourself adding a file and wondering whether it belongs in the
-baseline or the solution — it's in the solution. The baseline is broken; you
-are what fixes it.
+A complete DevSecOps pipeline implementation built on top of the
+[SecureFlow vulnerable baseline](https://github.com/Dcoder21/SecureFlow-VulnerableCodebase).
+This repository contains the security pipeline, policy enforcement, secrets
+management, runtime monitoring, and observability layers described in the
+project brief all proven working against the intentionally vulnerable
+codebase.
 
 ---
 
-## Success Criteria
+## Pipeline Status
 
-the expected
-artefacts include a green 7-stage pipeline, zero committed secrets, zero
-CRITICAL CVEs in any service image, zero CRITICAL Checkov findings, zero OPA
-Gatekeeper violations, all application exploits in this README returning
-400/403, Vault-injected secrets, Falco alerts triggering on intentional test
-events, and signed images with SBOM attestations.
+| Workflow | Status |
+|---|---|
+| CI Pipeline | ![CI](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/ci.yml/badge.svg) |
+| Secret Scanning | ![Secrets](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/secrets-scan.yml/badge.svg) |
+| SAST | ![SAST](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/sast.yml/badge.svg) |
+| Dependency Scanning | ![Deps](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/dependency-scan.yml/badge.svg) |
+| Container Scanning | ![Container](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/container-scan.yml/badge.svg) |
+| IaC Scanning | ![IaC](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/iac-scan.yml/badge.svg) |
+| DAST | ![DAST](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/dast.yml/badge.svg) |
+| Security Gate | ![Gate](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/security-gate.yml/badge.svg) |
+| Image Signing | ![Sign](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/sign-image.yml/badge.svg) |
+| OPA Gatekeeper | ![OPA](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/gatekeeper.yml/badge.svg) |
+| Falco | ![Falco](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/falco.yml/badge.svg) |
+| HashiCorp Vault | ![Vault](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/vault.yml/badge.svg) |
+| Network Policies | ![Network](https://github.com/Lhilove/SecureFlow-DevSecOps/actions/workflows/network-policies.yml/badge.svg) |
+
+---
+
+## Architecture
+
+Developer → git push → GitHub Repository
+│
+▼
+CI Pipeline (GitHub Actions)
+├── [Stage 1 — Parallel Scans]
+│ ├── Gitleaks — secrets detection
+│ ├── Bandit + SonarCloud — SAST
+│ ├── pip-audit — dependency scanning
+│ ├── Trivy — container + IaC scanning
+│ └── Checkov — Terraform + Kubernetes IaC policy
+│
+├── [Stage 2 — Dynamic Testing]
+│ └── OWASP ZAP — DAST against deployed application
+│
+├── [Stage 3 — Security Gate]
+│ └── Aggregates all scan results — blocks on CRITICAL, warns on HIGH
+│
+├── [Stage 4 — Supply Chain]
+│ ├── Cosign — image signing
+│ └── SBOM — SPDX attestation
+│
+└── [Stage 5 — Deploy to kind + Runtime Security]
+├── OPA Gatekeeper — admission control
+├── Falco — runtime threat detection
+├── HashiCorp Vault — secrets injection
+└── Network Policies — default deny + whitelist
+
+
+---
+
+## What This Repository Adds
+
+Everything in this list was built on top of the vulnerable baseline:
+
+.github/
+└── workflows/
+├── ci.yml — pipeline entry point
+├── secrets-scan.yml — Gitleaks secrets detection
+├── sast.yml — Bandit + SonarCloud
+├── dependency-scan.yml — pip-audit
+├── container-scan.yml — Trivy image scanning
+├── iac-scan.yml — Checkov Terraform + Kubernetes
+├── dast.yml — OWASP ZAP
+├── security-gate.yml — aggregation and gate decision
+├── sign-image.yml — Cosign + SBOM
+├── deploy.yml — kind cluster deployment
+├── gatekeeper.yml — OPA Gatekeeper constraints
+├── falco.yml — runtime threat detection
+├── vault.yml — HashiCorp Vault secrets management
+└── network-policies.yml — Kubernetes network policy enforcement
+
+infra/
+├── falco/
+│ └── values.yaml — custom Falco rules including Write below binary dir
+└── kubernetes/
+└── (Gatekeeper constraints, NetworkPolicies)
+
+pipeline/
+└── scripts/
+└── security-gate.sh; gate aggregation script
+
+docs/
+└── ci-cd/
+├── ci.md
+├── falco.md
+└── (per-workflow documentation)
+
+
+---
+
+## Pipeline Design Decisions
+
+**Why scans report but do not block on this baseline:**
+The vulnerable codebase is intentionally broken; MD5 passwords, SQLi,
+debug mode, publicly accessible RDS, wildcard IAM policies. Every scanner
+finds real issues by design. Blocking on findings at this stage would make
+the pipeline impossible to run. The correct approach is:
+
+1. Prove detection: show every tool finds what it should find
+2. Remediate: fix the vulnerabilities in the application and infrastructure
+3. Enforce: turn blocking gates back on and prove clean scans pass
+
+This repository demonstrates Step 1. Remediation and enforcement are
+documented in the article series.
+
+**Security gate logic:**
+The gate aggregates workflow conclusions via the GitHub API for the exact
+commit SHA. Blocking workflows (Gitleaks, SAST, Container, IaC) must pass.
+DAST is warn-only. "Not run" is treated as non-blocking.
+
+**Falco driver:**
+`modern_ebpf`: no kernel module compilation, works on GitHub Actions
+runners (kernel 5.8+), reliable in kind clusters where pods share the
+host kernel.
+
+---
+
+## Threat Model
+
+A full STRIDE threat model covering the CI/CD pipeline, Kubernetes cluster,
+Auth Service, and Transaction Service is in the companion repository:
+[Secureflow-DevSecOps](https://github.com/Lhilove/Secureflow-DevSecOps)
+
+---
+
+## Article Series
+
+This repository is documented across a Medium series:
+
+- Part 1: Shift Left, Verify Right: Building Security That Does Not Slow Down Development
+- Part 2: Implementing Shift Left, Verify Right in a Vulnerable FinTech Microservices Application
+- Part 3: Threat Modeling a FinTech Microservices Application: Where DevSecOps Really Begins
+- Part 4: Integrating CI/CD Security Tools: SAST, DAST, IaC, and More (in progress)
+
+---
+
+## Baseline Repository
+
+The intentionally vulnerable application this pipeline runs against:
+[Dcoder21/SecureFlow-VulnerableCodebase](https://github.com/Dcoder21/SecureFlow-VulnerableCodebase)
 
 ---
 
 ## Safety Notes
 
-- Do not `terraform apply` the infrastructure module against a real AWS account.
-  The IAM policies use `AdministratorAccess` and the RDS instances are publicly
-  accessible. Checkov is supposed to catch that before it reaches AWS.
-- The `.env` file contains canonical AWS example keys (`AKIAIOSFODNN7EXAMPLE`).
-  They are not live credentials but they will trip every secret scanner you
-  point at the repo — which is the exercise.
-- When you rotate and remove secrets during remediation, remember that deleting
-  a file in a later commit does **not** remove the secret from git history.
-  
+- Do not `terraform apply` against a real AWS account. IAM policies use
+  `AdministratorAccess` and RDS instances are publicly accessible by design.
+- The `.env` file contains example AWS keys that will trigger secret scanners.
+  This is intentional, Gitleaks is supposed to catch them.
+- Deleting a secret from a later commit does not remove it from git history.
+
+---
+
+## Disclaimer
+
+This repository is built for educational and professional development purposes.
+All security findings are against an intentionally vulnerable application.
+No production systems were tested without authorization.
