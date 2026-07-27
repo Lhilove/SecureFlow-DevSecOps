@@ -133,6 +133,7 @@ secureflow/
     └── terraform/                    ← IV-08, IV-09, IV-10 + the modules Checkov will scan
 ```
 
+
 # SecureFlow DevSecOps — Solution Implementation
 
 A complete DevSecOps pipeline implementation built on top of the
@@ -166,33 +167,39 @@ codebase.
 
 ## Architecture
 
+```
 Developer → git push → GitHub Repository
-│
-▼
-CI Pipeline (GitHub Actions)
-├── [Stage 1 — Parallel Scans]
-│ ├── Gitleaks — secrets detection
-│ ├── Bandit + SonarCloud — SAST
-│ ├── pip-audit — dependency scanning
-│ ├── Trivy — container + IaC scanning
-│ └── Checkov — Terraform + Kubernetes IaC policy
-│
-├── [Stage 2 — Dynamic Testing]
-│ └── OWASP ZAP — DAST against deployed application
-│
-├── [Stage 3 — Security Gate]
-│ └── Aggregates all scan results — blocks on CRITICAL, warns on HIGH
-│
-├── [Stage 4 — Supply Chain]
-│ ├── Cosign — image signing
-│ └── SBOM — SPDX attestation
-│
-└── [Stage 5 — Deploy to kind + Runtime Security]
-├── OPA Gatekeeper — admission control
-├── Falco — runtime threat detection
-├── HashiCorp Vault — secrets injection
-└── Network Policies — default deny + whitelist
-
+                              │
+                              ▼
+                    CI Pipeline (GitHub Actions)
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                                             │
+   [Stage 1 — Parallel Scans]              [Stage 2 — Dynamic Testing]
+   ├── Gitleaks — secrets detection         └── OWASP ZAP — DAST against
+   ├── Bandit + SonarCloud — SAST               deployed application
+   ├── pip-audit — dependency scanning
+   ├── Trivy — container scanning
+   └── Checkov — Terraform + Kubernetes IaC
+        │                                             │
+        └─────────────────────┬─────────────────────┘
+                              ▼
+                    [Stage 3 — Security Gate]
+                    Aggregates all scan results
+                    Blocks on CRITICAL, warns on HIGH
+                              │
+                              ▼
+                    [Stage 4 — Supply Chain]
+                    ├── Cosign — image signing
+                    └── SBOM — SPDX attestation
+                              │
+                              ▼
+              [Stage 5 — Deploy to kind + Runtime Security]
+              ├── OPA Gatekeeper — admission control
+              ├── Falco — runtime threat detection
+              ├── HashiCorp Vault — secrets injection
+              └── Network Policies — default deny + whitelist
+```
 
 ---
 
@@ -200,53 +207,71 @@ CI Pipeline (GitHub Actions)
 
 Everything in this list was built on top of the vulnerable baseline:
 
+```
 .github/
 └── workflows/
-├── ci.yml — pipeline entry point
-├── secrets-scan.yml — Gitleaks secrets detection
-├── sast.yml — Bandit + SonarCloud
-├── dependency-scan.yml — pip-audit
-├── container-scan.yml — Trivy image scanning
-├── iac-scan.yml — Checkov Terraform + Kubernetes
-├── dast.yml — OWASP ZAP
-├── security-gate.yml — aggregation and gate decision
-├── sign-image.yml — Cosign + SBOM
-├── deploy.yml — kind cluster deployment
-├── gatekeeper.yml — OPA Gatekeeper constraints
-├── falco.yml — runtime threat detection
-├── vault.yml — HashiCorp Vault secrets management
-└── network-policies.yml — Kubernetes network policy enforcement
+    ├── ci.yml                  — pipeline entry point
+    ├── secrets-scan.yml        — Gitleaks secrets detection
+    ├── sast.yml                — Bandit + SonarCloud
+    ├── dependency-scan.yml     — pip-audit
+    ├── container-scan.yml      — Trivy image scanning
+    ├── iac-scan.yml            — Checkov Terraform + Kubernetes
+    ├── dast.yml                — OWASP ZAP
+    ├── security-gate.yml       — aggregation and gate decision
+    ├── sign-image.yml          — Cosign + SBOM
+    ├── deploy.yml               — kind cluster deployment
+    ├── gatekeeper.yml          — OPA Gatekeeper constraints
+    ├── falco.yml               — runtime threat detection
+    ├── vault.yml                — HashiCorp Vault secrets management
+    └── network-policies.yml    — Kubernetes network policy enforcement
 
 infra/
 ├── falco/
-│ └── values.yaml — custom Falco rules including Write below binary dir
+│   └── values.yaml             — Falco Helm values (modern_ebpf driver)
+├── gatekeeper/
+│   ├── templates/               — ConstraintTemplates
+│   └── constraints/             — Constraints
+├── vault/
+│   ├── values.yaml
+│   └── policies/
 └── kubernetes/
-└── (Gatekeeper constraints, NetworkPolicies)
+    └── network-policies/        — default-deny + explicit allow policies
 
 pipeline/
 └── scripts/
-└── security-gate.sh; gate aggregation script
+    └── security-gate.sh         — gate aggregation script
 
 docs/
 └── ci-cd/
-├── ci.md
-├── falco.md
-└── (per-workflow documentation)
-
+    ├── gitleaks.md
+    ├── sast.md
+    ├── dependency-scanning.md
+    ├── container-scanning.md
+    ├── iac-scanning.md
+    ├── dast.md
+    ├── security-gate.md
+    ├── sbom-generation.md
+    ├── image-signing.md
+    ├── deploy.md
+    ├── gatekeeper.md
+    ├── network-policies.md
+    ├── vault.md
+    └── falco.md
+```
 
 ---
 
 ## Pipeline Design Decisions
 
 **Why scans report but do not block on this baseline:**
-The vulnerable codebase is intentionally broken; MD5 passwords, SQLi,
+The vulnerable codebase is intentionally broken: MD5 passwords, SQLi,
 debug mode, publicly accessible RDS, wildcard IAM policies. Every scanner
 finds real issues by design. Blocking on findings at this stage would make
 the pipeline impossible to run. The correct approach is:
 
-1. Prove detection: show every tool finds what it should find
-2. Remediate: fix the vulnerabilities in the application and infrastructure
-3. Enforce: turn blocking gates back on and prove clean scans pass
+1. Prove detection — show every tool finds what it should find
+2. Remediate — fix the vulnerabilities in the application and infrastructure
+3. Enforce — turn blocking gates back on and prove clean scans pass
 
 This repository demonstrates Step 1. Remediation and enforcement are
 documented in the article series.
@@ -257,7 +282,7 @@ commit SHA. Blocking workflows (Gitleaks, SAST, Container, IaC) must pass.
 DAST is warn-only. "Not run" is treated as non-blocking.
 
 **Falco driver:**
-`modern_ebpf`: no kernel module compilation, works on GitHub Actions
+`modern_ebpf` — no kernel module compilation, works on GitHub Actions
 runners (kernel 5.8+), reliable in kind clusters where pods share the
 host kernel.
 
@@ -294,7 +319,7 @@ The intentionally vulnerable application this pipeline runs against:
 - Do not `terraform apply` against a real AWS account. IAM policies use
   `AdministratorAccess` and RDS instances are publicly accessible by design.
 - The `.env` file contains example AWS keys that will trigger secret scanners.
-  This is intentional, Gitleaks is supposed to catch them.
+  This is intentional — Gitleaks is supposed to catch them.
 - Deleting a secret from a later commit does not remove it from git history.
 
 ---
